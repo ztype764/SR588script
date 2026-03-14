@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+
+import subprocess
+import usb.core
+import sys
+import time
+
+VENDOR = 0x0483
+PRODUCT = 0x5720
+ENDPOINT = 0x01
+WIDTH = 32
+
+
+def find_usb_path():
+    out = subprocess.check_output("lsusb | grep 0483:5720", shell=True).decode()
+    parts = out.split()
+    bus = parts[1]
+    dev = parts[3].replace(":", "")
+    return f"/dev/bus/usb/{bus}/{dev}"
+
+
+def reset_printer():
+    path = find_usb_path()
+    subprocess.run(["usbreset", path], stdout=subprocess.DEVNULL)
+
+
+def center(line):
+    line = line.strip()
+    if len(line) >= WIDTH:
+        return line
+    padding = (WIDTH - len(line)) // 2
+    return " " * padding + line
+
+
+def format_text(text):
+    lines = text.splitlines()
+    out = []
+
+    for line in lines:
+
+        if line.startswith("^"):
+            out.append(center(line[1:]))
+        else:
+            out.append(line[:WIDTH])
+
+    return "\n".join(out)
+
+
+def print_text(text):
+
+    dev = usb.core.find(idVendor=VENDOR, idProduct=PRODUCT)
+
+    if dev is None:
+        print("Printer not found")
+        sys.exit(1)
+
+    dev.set_configuration()
+
+    data = text.encode() + b"\n\n\n\x1dV1"
+
+    dev.write(ENDPOINT, data)
+
+
+def main():
+
+    text = sys.stdin.read()
+
+    reset_printer()
+    time.sleep(0.5)
+
+    formatted = format_text(text)
+
+    print_text(formatted)
+
+
+if __name__ == "__main__":
+    main()
